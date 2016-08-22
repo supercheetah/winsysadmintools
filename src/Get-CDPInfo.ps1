@@ -68,7 +68,7 @@ First, query the remote machine for what devices are available to it, and then r
 	      0x0000:  0000 0001 0000 0000 ffff ffff
 
 .NOTES
-Author: Rene Horn, rene.horn@convergys.com
+Author: Rene Horn, the.rhorn@gmail.com
 Version: 0.3
 Known issue:
     - Does no parsing of CDP information.  Just outputs it as it gets it from tcpdump.
