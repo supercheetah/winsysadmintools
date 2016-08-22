@@ -27,6 +27,9 @@ param(
 
 [bool]$NoGUI = $NoGUI.IsPresent
 
+# On some older Cisco IOS hardware (particularly 3750 V1), some wait time between commands is necessary so that we don't get RST packets.
+$WAITMSBETWEENCMDS = 1013
+
 if ($PSVersionTable.PSVersion.Major -lt 3) {
     Write-Error "PowerShell 3.0 or higher is required!"
     Exit -1
@@ -144,7 +147,7 @@ function New-PlinkSession([string]$computer, [string[]]$cisco_ios_cmds, [pscrede
             return $null
         }
     }
-
+    
     $plink_proc = [System.Diagnostics.Process]::Start($plink_proc_info)
     $plink_proc_info.Arguments = "" # for security reasons, blanking this out so there aren't so many copies of the password in clear text floating around in memory
 
@@ -152,7 +155,7 @@ function New-PlinkSession([string]$computer, [string[]]$cisco_ios_cmds, [pscrede
         $plink_proc.StandardInput.WriteLine("$host_key_accepted")
         # plink seems to need need a break after prompting for the host key
         # seems to randomly fail at just a one or two seconds pause, three seems safe
-        Start-Sleep 3
+        Start-Sleep -Milliseconds $WAITMSBETWEENCMDS
     }
     
     return $plink_proc, [System.IO.StreamWriter]($plink_proc.StandardInput), $plink_proc.StandardOutput.ReadToEndAsync(), $plink_proc.StandardInput, $plink_proc.StandardError.ReadToEndAsync()
@@ -161,7 +164,13 @@ function New-PlinkSession([string]$computer, [string[]]$cisco_ios_cmds, [pscrede
 function Test-HostKeyIsCached([string]$plink_stderr_result)
 {
     $err_split = $plink_stderr_result.Trim().Split("`n")
-    return ($err_split[($err_split.Count - 1)].Trim() -notmatch "Connection abandoned.")
+    [string[]]::Reverse($err_split)
+    foreach ($err_line in $err_split) {
+        if ($err_line.Trim() -match "Connection abandoned.") {
+            return $false
+        }
+    }
+    return $true
 }
 
 function Invoke-CiscoIOSCmds([string]$computer, [string[]]$cisco_ios_cmds, [pscredential]$credentials)
@@ -177,10 +186,10 @@ function Invoke-CiscoIOSCmds([string]$computer, [string[]]$cisco_ios_cmds, [pscr
         # We don't want to use WriteLine() here because it writes \n\r to the stream, which gets interpreted as two EOLs by Cisco IOS
         $plink_stdin.Write("terminal length 0`n")
         # Cisco IOS gets a little weird if it doesn't get a break between commands, so we sleep for a bit.
-        Start-Sleep 1
+        Start-Sleep -Milliseconds $WAITMSBETWEENCMDS
         foreach ($cmd in $cisco_ios_cmds) {
             $plink_stdin.Write("$cmd`n")
-            Start-Sleep 1
+            Start-Sleep -Milliseconds $WAITMSBETWEENCMDS
         }
 
         $plink_stdin.Write("exit`n")
